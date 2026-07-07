@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title></title>
+    <style>
+        *{
+            margin:0;
+            padding:0;
+            box-sizing:border-box;
+        }
+
+        html,body{
+            width:100%;
+            height:100%;
+            overflow:hidden;
+            font-family:Arial,Helvetica,sans-serif;
+            background:#6ec6ff;
+        }
+
+        canvas{
+            display:block;
+            width:100vw;
+            height:100vh;
+            background:linear-gradient(#6ec6ff,#dff6ff);
+        }
+
+        #ui{
+            position:absolute;
+            top:20px;
+            left:20px;
+            color:#fff;
+            text-shadow:2px 2px 5px #000;
+            z-index:10;
+        }
+
+        #score{
+            font-size:48px;
+            font-weight:bold;
+        }
+
+        #best{
+            font-size:20px;
+        }
+
+        #gameOver{
+            position:absolute;
+            inset:0;
+            display:flex;
+            flex-direction:column;
+            justify-content:center;
+            align-items:center;
+            background:rgba(0,0,0,.55);
+            color:white;
+            z-index:20;
+        }
+
+        #gameOver.hidden{
+            display:none;
+        }
+
+        #gameOver h1{
+            font-size:64px;
+            margin-bottom:20px;
+        }
+
+        #gameOver p{
+            font-size:28px;
+            margin-bottom:20px;
+        }
+
+        button{
+            padding:15px 35px;
+            border:none;
+            border-radius:10px;
+            font-size:24px;
+            cursor:pointer;
+            background:#00c853;
+            color:white;
+            transition:.2s;
+        }
+
+        button:hover{
+            transform:scale(1.05);
+        }
+
+        @media (max-width:700px){
+            #score{
+                font-size:34px;
+            }
+
+            #best{
+                font-size:18px;
+            }
+
+            button{
+                font-size:20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <div id="ui">
+        <div id="score">Score: 0</div>
+        <div id="best">Best: 0</div>
+    </div>
+    <div id="gameOver" class="hidden">
+        <h1>Game Over</h1>
+        <p>Try again?</p>
+        <button onclick="location.reload()">Restart</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score');
+        const bestEl = document.getElementById('best');
+        const gameOverEl = document.getElementById('gameOver');
+
+        let score = 0;
+        let best = Number(localStorage.getItem('bestScore')) || 0;
+        let lives = 3;
+        let paused = false;
+        let isGameOver = false;
+        let animationID = null;
+        const popParticles = [];
+
+        bestEl.textContent = `Best: ${best}`;
+
+        const livesDiv = document.createElement('div');
+        livesDiv.id = 'lives';
+        livesDiv.style.fontSize = '22px';
+        livesDiv.style.marginTop = '10px';
+        livesDiv.textContent = '❤️'.repeat(lives);
+        document.getElementById('ui').appendChild(livesDiv);
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        function saveBest() {
+            localStorage.setItem('bestScore', best);
+        }
+
+        function updateLives() {
+            livesDiv.textContent = '❤️'.repeat(lives);
+        }
+
+        function updateBest() {
+            const newBest = Math.max(best, score);
+            if (newBest !== best) {
+                best = newBest;
+                saveBest();
+            }
+            bestEl.textContent = `Best: ${best}`;
+        }
+
+        function endGame() {
+            isGameOver = true;
+            paused = true;
+            gameOverEl.classList.remove('hidden');
+            cancelAnimationFrame(animationID);
+            gameplayStop();
+            updateBest();
+        }
+
+        function startGame() {
+            if (window.CrazyGames?.SDK?.game) {
+                CrazyGames.SDK.game.gameplayStart();
+            }
+
+            paused = false;
+            isGameOver = false;
+            score = 0;
+            lives = 3;
+            scoreEl.textContent = `Score: ${score}`;
+            updateLives();
+            gameOverEl.classList.add('hidden');
+            animate();
+        }
+
+        function gameOver() {
+            if (window.CrazyGames?.SDK?.game) {
+                CrazyGames.SDK.game.gameplayStop();
+            }
+
+            isGameOver = true;
+            paused = true;
+            gameOverEl.classList.remove('hidden');
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        const balloonColors = ['#ff6b6b', '#ffca3a', '#8ac926', '#1982c4', '#6a4c93'];
+        const balloons = Array.from({ length: 18 }, createBalloon);
+
+        function createBalloon() {
+            return {
+                x: Math.random() * canvas.width,
+                y: canvas.height + Math.random() * 200,
+                radius: 18 + Math.random() * 18,
+                color: balloonColors[Math.floor(Math.random() * balloonColors.length)],
+                speed: 0.4 + Math.random() * 1.1,
+                drift: (Math.random() - 0.5) * 0.5,
+                stringLength: 70 + Math.random() * 50,
+            };
+        }
+
+        function drawBalloon(balloon) {
+            ctx.beginPath();
+            ctx.ellipse(balloon.x, balloon.y, balloon.radius * 0.8, balloon.radius, 0, 0, Math.PI * 2);
+            ctx.fillStyle = balloon.color;
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(0,0,0,0.16)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(balloon.x, balloon.y + balloon.radius);
+            ctx.lineTo(balloon.x, balloon.y + balloon.radius + balloon.stringLength);
+            ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(balloon.x - 6, balloon.y + balloon.radius);
+            ctx.lineTo(balloon.x + 6, balloon.y + balloon.radius);
+            ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+
+        function drawPopParticle(particle) {
+            ctx.beginPath();
+            ctx.arc(particle.x, particle.y, particle.radius, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(255,255,255,${particle.alpha})`;
+            ctx.fill();
+        }
+
+        function playPop() {
+            const popSound = new Audio('pop.mp3');
+            popSound.currentTime = 0;
+            popSound.play().catch(() => {});
+        }
+
+        function popBalloon(balloon) {
+            for (let i = 0; i < 10; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 1.5 + Math.random() * 2.5;
+                popParticles.push({
+                    x: balloon.x,
+                    y: balloon.y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    radius: 2 + Math.random() * 3,
+                    alpha: 1,
+                });
+            }
+
+            playPop();
+            Object.assign(balloon, createBalloon(), { y: canvas.height + 60 });
+            score += 1;
+            scoreEl.textContent = `Score: ${score}`;
+            updateBest();
+        }
+
+        canvas.addEventListener('click', (event) => {
+            if (paused || isGameOver) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const clickX = event.clientX - rect.left;
+            const clickY = event.clientY - rect.top;
+
+            for (let i = balloons.length - 1; i >= 0; i--) {
+                const balloon = balloons[i];
+                const dx = clickX - balloon.x;
+                const dy = clickY - balloon.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance <= balloon.radius) {
+                    popBalloon(balloon);
+                    break;
+                }
+            }
+        });
+
+        canvas.addEventListener('touchstart', (event) => {
+            event.preventDefault();
+            const touch = event.touches[0];
+            canvas.dispatchEvent(new MouseEvent('click', {
+                clientX: touch.clientX,
+                clientY: touch.clientY,
+                bubbles: true,
+                cancelable: true,
+            }));
+        });
+
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'KeyP') {
+                paused = !paused;
+                if (!paused && !isGameOver) {
+                    animate();
+                }
+            }
+        });
+
+        function updateBalloon(balloon) {
+            balloon.y -= balloon.speed;
+            balloon.x += balloon.drift;
+
+            if (balloon.y + balloon.radius < -60) {
+                if (lives > 1) {
+                    lives -= 1;
+                    updateLives();
+                    Object.assign(balloon, createBalloon(), { y: canvas.height + 60 });
+                } else {
+                    lives = 0;
+                    updateLives();
+                    gameOver();
+                }
+            }
+
+            if (balloon.x < -80) balloon.x = canvas.width + 80;
+            if (balloon.x > canvas.width + 80) balloon.x = -80;
+        }
+
+        function animate() {
+            if (paused || isGameOver) return;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            balloons.forEach((balloon) => {
+                updateBalloon(balloon);
+                drawBalloon(balloon);
+            });
+
+            for (let i = popParticles.length - 1; i >= 0; i--) {
+                const particle = popParticles[i];
+                particle.x += particle.vx;
+                particle.y += particle.vy;
+                particle.vy += 0.05;
+                particle.alpha -= 0.03;
+
+                if (particle.alpha <= 0) {
+                    popParticles.splice(i, 1);
+                } else {
+                    drawPopParticle(particle);
+                }
+            }
+
+            animationID = requestAnimationFrame(animate);
+        }
+
+        window.CrazyGames = window.CrazyGames || {};
+
+        function gameplayStart() {
+            if (window.CrazyGames.SDK?.game?.playGameplay) {
+                window.CrazyGames.SDK.game.playGameplay();
+            } else if (window.CrazyGames.SDK?.game?.gameplayStart) {
+                window.CrazyGames.SDK.game.gameplayStart();
+            }
+        }
+
+        function gameplayStop() {
+            if (window.CrazyGames.SDK?.game?.stopGameplay) {
+                window.CrazyGames.SDK.game.stopGameplay();
+            } else if (window.CrazyGames.SDK?.game?.gameplayStop) {
+                window.CrazyGames.SDK.game.gameplayStop();
+            }
+        }
+
+        function startGame() {
+            if (window.CrazyGames?.SDK?.game) {
+                CrazyGames.SDK.game.gameplayStart();
+            }
+
+            paused = false;
+            isGameOver = false;
+            score = 0;
+            lives = 3;
+            scoreEl.textContent = `Score: ${score}`;
+            updateLives();
+            gameOverEl.classList.add('hidden');
+            animate();
+        }
+
+        function gameOver() {
+            if (window.CrazyGames?.SDK?.game) {
+                CrazyGames.SDK.game.gameplayStop();
+            }
+
+            isGameOver = true;
+            paused = true;
+            gameOverEl.classList.remove('hidden');
+        }
+
+        startGame();
+    </script>
+</body>
+</html>
