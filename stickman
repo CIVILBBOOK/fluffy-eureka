@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D Stickman Runner</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: linear-gradient(180deg, #101827 0%, #1f2937 100%);
+      color: #af4444;
+      overflow: hidden;
+    }
+    header {
+      padding: 20px 24px;
+      background: rgba(15, 23, 42, 0.9);
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 1.3rem;
+    }
+    .status  {
+      display: flex:
+      gap: 18px;
+      align-items: center;
+      font-size: 0.95rem;
+    }
+    .status div {
+      background: rgba(255,255,255,0.08);
+      padding: 10px 14px;
+      border-radius: 12px;
+      min-width: 100px;
+      text-align: center;
+    }
+    #game-container {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: calc(100vh - 70px);
+      position: relative;
+    }
+    canvas {
+      width: 100%;
+      max-width: 900px;
+      height: 600px;
+      background: radial-gradient(circle at top, #293657 0%, #111827 55%, #080a11 100%);
+      border: 2px solid rgba(255,255,255,0.08);
+      border-radius: 24px;
+      box-shadow: 0 24px 80px rgba(0,0,0,0.3);
+    }
+    .instructions {
+      position: absolute;
+      bottom: 28px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(15, 23, 42, 0.85);
+      padding: 12px 18px;
+      border-radius: 16px;
+      color: rgba(255,255,255,0.85);
+      font-size: 0.95rem;
+      text-align: center;
+      max-width: 460px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>3D Stickman Runner</h1>
+    <div class="status">
+      <div id="level">Level: 1</div>
+      <div id="score">Score: 0</div>
+      <div id="message">press space to jump</div>
+    </div>
+  </header>
+  <main id="game-container">
+    <canvas id="gameCanvas" width="900" height="600"></canvas>
+    <div class="instructions">Avoid incoming obstacles and reach the next level. reach levels faster</div>
+  </main>
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const levelEl = document.getElementById('level');
+    const scoreEl = document.getElementById('score');
+    const messageEl = document.getElementById('message');
+
+    const state = {
+      stickman: { x: 200, y: 450, vy: 0, radius: 18, grounded: true },
+      gravity: 1.0,
+      floor: 520,
+      obstacles: [],
+      frame: 0,
+      score: 0,
+      level: 1,
+      speed: 5,
+      gameOver: false
+    };
+
+    function resetGame() {
+      state.obstacles = [];
+      state.frame = 0;
+      state.score = 0;
+      state.level = 1;
+      state.speed = 5;
+      state.stickman.y = 450;
+      state.stickman.vy = 0;
+      state.stickman.grounded = true;
+      state.gameOver = false;
+      messageEl.textContent = 'press space to jump';
+      updateStats();
+    }
+
+    function updateStats() {
+      levelEl.textContent = 'Level: ' + state.level;
+      scoreEl.textContent = 'Score: ' + state.score;
+    }
+
+    function spawnObstacle() {
+      const depth = 1 + Math.random() * 0.7;
+      const width = 40 + Math.random() * 40;
+      state.obstacles.push({
+        x: canvas.width + 100,
+        y: state.floor,
+        width,
+        height: 80,
+        depth,
+        color: '#f8b739'
+      });
+    }
+
+    function drawStickman() {
+      const s = state.stickman;
+      const headX = s.x;
+      const headY = s.y - 60;
+      // Body
+      ctx.strokeStyle = '#d9d9d9';
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.moveTo(headX, headY + 24);
+      ctx.lineTo(headX, headY + 88);
+      ctx.stroke();
+      // Limbs
+      ctx.beginPath();
+      ctx.moveTo(headX, headY + 50);
+      ctx.lineTo(headX - 24, headY + 90);
+      ctx.moveTo(headX, headY + 50);
+      ctx.lineTo(headX + 24, headY + 90);
+      ctx.moveTo(headX, headY + 75);
+      ctx.lineTo(headX - 24, headY + 40);
+      ctx.moveTo(headX, headY + 75);
+      ctx.lineTo(headX + 24, headY + 40);
+      ctx.stroke();
+      // Head
+      ctx.beginPath();
+      ctx.fillStyle = '#fff';
+      ctx.arc(headX, headY, s.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      // Shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.14)';
+      ctx.beginPath();
+      ctx.ellipse(headX, state.floor + 22, 32, 10, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    function drawScene() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      // Ground grid
+      const gridHeight = state.floor + 20;
+      ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 16; i++) {
+        const px = i * 60 + ((state.frame * state.speed) % 60);
+        ctx.beginPath();
+        ctx.moveTo(px, gridHeight);
+        ctx.lineTo(px - 100, 350);
+        ctx.stroke();
+      }
+      ctx.beginPath();
+      ctx.moveTo(0, gridHeight);
+      ctx.lineTo(canvas.width, gridHeight);
+      ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+      ctx.stroke();
+      // Obstacles
+      state.obstacles.forEach(obstacle => {
+        const depthScale = obstacle.depth;
+        const screenY = obstacle.y - (1 - depthScale) * 50;
+        const screenHeight = obstacle.height * depthScale;
+        const screenWidth = obstacle.width * depthScale;
+        ctx.fillStyle = obstacle.color;
+        ctx.fillRect(obstacle.x, screenY - screenHeight, screenWidth, screenHeight);
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(obstacle.x, screenY - screenHeight, screenWidth, screenHeight);
+      });
+      drawStickman();
+    }
+
+    function advanceLevel() {
+      state.level += 1;
+      state.speed += 1.4;
+      state.obstacles = [];
+      state.score = 0;
+      messageEl.textContent = 'Level ' + state.level + ' start!';
+      setTimeout(() => { messageEl.textContent = 'Keep going'; }, 1300);
+      updateStats();
+    }
+
+    function gameOver() {
+      state.gameOver = true;
+      messageEl.textContent = 'Game over - press Space to restart';
+    }
+
+    function update() {
+      if (state.gameOver) return;
+      state.frame += 1;
+      state.score += 1;
+      if (state.frame % 90 === 0) {
+        spawnObstacle();
+      }
+      if (state.score > 0 && state.score % 450 === 0) {
+        advanceLevel();
+      }
+      state.stickman.vy += state.gravity;
+      state.stickman.y += state.stickman.vy;
+      if (state.stickman.y >= state.floor - 70) {
+        state.stickman.y = state.floor - 70;
+        state.stickman.vy = 0;
+        state.stickman.grounded = true;
+      }
+      state.obstacles = state.obstacles.filter(obstacle => {
+        obstacle.x -= state.speed * obstacle.depth;
+        const hitX = state.stickman.x + 16 > obstacle.x && state.stickman.x - 16 < obstacle.x + obstacle.width * obstacle.depth;
+        const hitY = state.stickman.y + 20 > obstacle.y - obstacle.height * obstacle.depth;
+        if (hitX && hitY) {
+          gameOver();
+          return false;
+        }
+        return obstacle.x + obstacle.width * obstacle.depth > -100;
+      });
+      drawScene();
+      updateStats();
+      requestAnimationFrame(update);
+    }
+
+    window.addEventListener('keydown', (event) => {
+      if (event.code === 'Space') {
+        event.preventDefault();
+        if (state.gameOver) {
+          resetGame();
+          requestAnimationFrame(update);
+        } else if (state.stickman.grounded) {
+          state.stickman.vy = -18;
+          state.stickman.grounded = false;
+          messageEl.textContent = 'Jumped!';
+          setTimeout(() => { if (!state.gameOver) messageEl.textContent = 'Avoid obstacles'; }, 400);
+        }
+      }
+    });
+
+    resetGame();
+    requestAnimationFrame(update);
+  </script>
+</body>
+</html>
